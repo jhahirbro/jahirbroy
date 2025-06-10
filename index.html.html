@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sopa de Letras - Niveles</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f0f0f0;
+      transition: background-color 0.5s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #game {
+      background: #fff;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      text-align: center;
+    }
+    h1 {
+      margin: 0 0 10px;
+    }
+    #level {
+      font-weight: bold;
+      margin: 10px 0;
+    }
+    #words {
+      margin: 10px 0;
+    }
+    .word {
+      display: inline-block;
+      margin: 4px;
+      padding: 5px 10px;
+      background: #eee;
+      border-radius: 6px;
+    }
+    .found {
+      text-decoration: line-through;
+      color: green;
+      background: #c8e6c9;
+    }
+    #grid {
+      display: grid;
+      grid-template-columns: repeat(10, 40px);
+      grid-template-rows: repeat(10, 40px);
+      gap: 2px;
+      justify-content: center;
+      margin: 10px 0;
+    }
+    .cell {
+      width: 40px;
+      height: 40px;
+      line-height: 40px;
+      text-align: center;
+      border: 1px solid #ccc;
+      background: #fafafa;
+      font-weight: bold;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.2s;
+    }
+    .selected {
+      background: #90caf9 !important;
+      color: #fff;
+    }
+    .correct {
+      background: #4caf50 !important;
+      color: #fff;
+    }
+    #message {
+      font-size: 20px;
+      font-weight: bold;
+      color: green;
+      margin-top: 10px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="game">
+    <h1>Sopa de Letras</h1>
+    <div id="level">Nivel 1</div>
+    <div id="words"></div>
+    <div id="grid"></div>
+    <div id="message">¡Felicidades! Has completado todos los niveles.</div>
+  </div>
+
+  <script>
+    const palabras = ["RIESGO", "GALLETAS", "DROGA", "PREVENIR", "SALUD"];
+    const fondos = ["#fce4ec", "#e3f2fd", "#e8f5e9", "#fff3e0", "#ede7f6", "#f0f4c3"];
+    const gridSize = 10;
+    const maxNivel = 6;
+    let nivel = 1;
+    let seleccionadas = [];
+    let encontradas = {};
+    let posiciones = {};
+
+    const grid = document.getElementById("grid");
+    const wordsDiv = document.getElementById("words");
+    const levelDiv = document.getElementById("level");
+    const message = document.getElementById("message");
+
+    // Audio
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    function playDing() {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "sine";
+      o.frequency.value = 880;
+      g.gain.setValueAtTime(0.2, ctx.currentTime);
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start();
+      o.stop(ctx.currentTime + 0.15);
+    }
+    function playFanfare() {
+      const tones = [523, 659, 784];
+      tones.forEach((f, i) => {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = "triangle";
+        o.frequency.setValueAtTime(f, ctx.currentTime + i * 0.2);
+        g.gain.setValueAtTime(0.3, ctx.currentTime + i * 0.2);
+        o.connect(g);
+        g.connect(ctx.destination);
+        o.start(ctx.currentTime + i * 0.2);
+        o.stop(ctx.currentTime + i * 0.2 + 0.2);
+      });
+    }
+
+    function iniciarNivel() {
+      document.body.style.backgroundColor = fondos[nivel - 1];
+      levelDiv.textContent = "Nivel " + nivel;
+      grid.innerHTML = "";
+      wordsDiv.innerHTML = "";
+      message.style.display = "none";
+      encontradas = {};
+      seleccionadas = [];
+      posiciones = {};
+
+      palabras.forEach(p => {
+        const span = document.createElement("span");
+        span.textContent = p;
+        span.className = "word";
+        wordsDiv.appendChild(span);
+      });
+
+      const letras = Array.from({ length: gridSize }, () =>
+        Array.from({ length: gridSize }, () =>
+          String.fromCharCode(65 + Math.floor(Math.random() * 26))
+        )
+      );
+
+      palabras.forEach(p => colocarPalabra(p, letras));
+
+      for (let r = 0; r < gridSize; r++) {
+        for (let c = 0; c < gridSize; c++) {
+          const cell = document.createElement("div");
+          cell.className = "cell";
+          cell.textContent = letras[r][c];
+          cell.dataset.row = r;
+          cell.dataset.col = c;
+          grid.appendChild(cell);
+        }
+      }
+    }
+
+    function colocarPalabra(palabra, letras) {
+      let colocada = false;
+      const dirs = [
+        [0,1],[1,0],[1,1],[-1,0],[0,-1],[-1,-1],[1,-1],[-1,1]
+      ];
+
+      while (!colocada) {
+        const [dr, dc] = dirs[Math.floor(Math.random() * dirs.length)];
+        const r0 = Math.floor(Math.random() * gridSize);
+        const c0 = Math.floor(Math.random() * gridSize);
+        const coords = [];
+
+        let ok = true;
+        for (let i = 0; i < palabra.length; i++) {
+          const r = r0 + dr * i;
+          const c = c0 + dc * i;
+          if (r < 0 || r >= gridSize || c < 0 || c >= gridSize) {
+            ok = false; break;
+          }
+          coords.push([r, c]);
+        }
+
+        if (ok && !colisiona(coords)) {
+          coords.forEach((coord, i) => {
+            const [r, c] = coord;
+            letras[r][c] = palabra[i];
+          });
+          posiciones[palabra] = coords;
+          colocada = true;
+        }
+      }
+    }
+
+    function colisiona(coords) {
+      return Object.values(posiciones).some(existing =>
+        existing.some(e => coords.some(c => c[0] === e[0] && c[1] === e[1]))
+      );
+    }
+
+    grid.addEventListener("click", e => {
+      if (!e.target.classList.contains("cell")) return;
+      const cell = e.target;
+      const r = +cell.dataset.row;
+      const c = +cell.dataset.col;
+      if (cell.classList.contains("correct")) return;
+
+      const idx = seleccionadas.findIndex(p => p[0] === r && p[1] === c);
+      if (idx !== -1) {
+        seleccionadas.splice(idx, 1);
+        cell.classList.remove("selected");
+      } else {
+        seleccionadas.push([r, c]);
+        cell.classList.add("selected");
+      }
+
+      verificarSeleccion();
+    });
+
+    function verificarSeleccion() {
+      for (const palabra of palabras) {
+        if (encontradas[palabra]) continue;
+        const coords = posiciones[palabra];
+        if (coords.length !== seleccionadas.length) continue;
+
+        const igual = coords.every(([r, c], i) => r === seleccionadas[i][0] && c === seleccionadas[i][1]);
+        if (igual) {
+          coords.forEach(([r, c]) => {
+            const celda = document.querySelector(`.cell[data-row="${r}"][data-col="${c}"]`);
+            celda.classList.add("correct");
+            celda.classList.remove("selected");
+          });
+          document.querySelectorAll(".word").forEach(w => {
+            if (w.textContent === palabra) w.classList.add("found");
+          });
+          encontradas[palabra] = true;
+          seleccionadas = [];
+          playDing();
+
+          if (Object.keys(encontradas).length === palabras.length) {
+            if (nivel === maxNivel) {
+              message.style.display = "block";
+              playFanfare();
+            } else {
+              nivel++;
+              setTimeout(iniciarNivel, 1000);
+            }
+          }
+          break;
+        }
+      }
+
+      if (seleccionadas.length > 10) {
+        document.querySelectorAll(".selected").forEach(c => c.classList.remove("selected"));
+        seleccionadas = [];
+      }
+    }
+
+    iniciarNivel();
+  </script>
+</body>
+</html>
+
